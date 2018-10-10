@@ -1,9 +1,13 @@
 <template>
-  <div>
-    <FormPlanPicker v-if="currentStepNumber === 1"/>
-    <FormUserDetails v-if="currentStepNumber === 2"/>
-    <FormAddress v-if="currentStepNumber === 3"/>
-    <FormReviewOrder v-if="currentStepNumber === 4"/>
+<div>
+  <div v-if="wizardInProgress" v-show="asyncState !== 'pending'">
+    <keep-alive>
+      <component ref="currentStep" :is="currentStep" @update="processStep" :wizard-data="form" ></component>
+    </keep-alive>
+    <!-- <FormPlanPicker v-if="currentStepNumber === 1" @update="processStep" /> -->
+    <!-- <FormUserDetails v-if="currentStepNumber === 2" @update="processStep" />
+    <FormAddress v-if="currentStepNumber === 3" @update="processStep"  />
+    <FormReviewOrder v-if="currentStepNumber === 4" @update="processStep" :wizard-data="form" /> -->
 
     <div class="progress-bar">
       <div :style="`width: ${progress}%;`"></div>
@@ -18,20 +22,39 @@
       >Back
       </button>
       <button
-        @click="goNext"
+        @click="nextButtonAction"
+        :disabled="!canGoNext"
         class="btn"
-      >Next</button>
+      >{{isLastStep ? 'Complete Order' : 'Next'}}</button>
     </div>
-
-    <pre><code>{{form}}</code></pre>
   </div>
+
+  <div v-else>
+      <h1 class="title">Thank You!</h1>
+      <h2 class="subtitle">
+        We look forward to shipping you your order!
+      </h2>
+      <p class="text-center">
+        <a href="https://vueschool.io" target="_blank" class="btn">Go somewhere cool!</a>
+      </p>
+  </div>
+
+  <div class="loading-wrapper" v-if="asyncState === 'pending'">s
+    <div class="loader">
+      <img src="/spinner.svg" alt=""/>
+      <p>Please wait, we're hitting our servers!</p>
+    </div>
+  </div>
+
+</div>
 </template>
 
 <script>
-import FormPlanPicker from './FormPlanPicker'
-import FormUserDetails from './FormUserDetails'
-import FormAddress from './FormAddress'
-import FormReviewOrder from './FormReviewOrder'
+import { postFormToDB } from '../api';
+import FormPlanPicker from './FormPlanPicker';
+import FormUserDetails from './FormUserDetails';
+import FormAddress from './FormAddress';
+import FormReviewOrder from './FormReviewOrder';
 export default {
   name: 'FormWizard',
   components: {
@@ -40,10 +63,17 @@ export default {
     FormAddress,
     FormReviewOrder
   },
-  data () {
+  data() {
     return {
       currentStepNumber: 1,
-      length: 4,
+      canGoNext: false,
+      asyncState: null,
+      steps: [
+        'FormPlanPicker',
+        'FormUserDetails',
+        'FormAddress',
+        'FormReviewOrder'
+      ],
       form: {
         plan: null,
         email: null,
@@ -54,20 +84,56 @@ export default {
         chocolate: false,
         otherTreat: false
       }
-    }
+    };
   },
   computed: {
-    progress () {
-      return this.currentStepNumber/this.length * 100
+    isLastStep() {
+      return this.currentStepNumber === this.length;
+    },
+    wizardInProgress() {
+      return this.currentStepNumber <= this.length;
+    },
+    length() {
+      return this.steps.length;
+    },
+    currentStep() {
+      return this.steps[this.currentStepNumber - 1];
+    },
+    progress() {
+      return (this.currentStepNumber / this.length) * 100;
     }
   },
   methods: {
-    goBack () {
-      this.currentStepNumber--
+    nextButtonAction() {
+      if (this.isLastStep()) {
+        this.submitOrder();
+      } else {
+        this.goNext();
+      }
     },
-    goNext () {
-      this.currentStepNumber++
+    submitOrder() {
+      this.asyncState = 'pending';
+      postFormToDB(this.form).then(() => {
+        console.log('form submitted', this.form);
+        this.asyncState = 'success';
+        this.currentStepNumber++;
+      });
+    },
+    processStep(step) {
+      Object.assign(this.form, step.data);
+      this.canGoNext = step.valid;
+    },
+    goBack() {
+      this.currentStepNumber--;
+      this.canGoNext = true;
+    },
+    goNext() {
+      this.currentStepNumber++;
+      // this.canGoNext = false;
+      this.$nextTick(() => {
+        this.canGoNext = this.$refs.currentStep.$v.$invalid;
+      });
     }
   }
-}
+};
 </script>
